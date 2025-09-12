@@ -5,10 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MapPin, Copy, Share2, QrCode, Navigation, Plus, Edit, Trash2 } from "lucide-react";
+import { MapPin, Copy, Share2, QrCode, Navigation, Plus, Edit, Trash2, Search } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { SavedAddress } from "@/types";
 import { useToast } from "@/hooks/use-toast";
+import QRCode from "react-qr-code";
 
 export const AddressManager = () => {
   const { user } = useAuth();
@@ -16,6 +17,11 @@ export const AddressManager = () => {
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<SavedAddress | null>(null);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [isDecipherModalOpen, setIsDecipherModalOpen] = useState(false);
+  const [selectedAddress, setSelectedAddress] = useState<SavedAddress | null>(null);
+  const [decipherCode, setDecipherCode] = useState("");
+  const [decipheredAddress, setDecipheredAddress] = useState<SavedAddress | null>(null);
   const [newAddress, setNewAddress] = useState({
     label: "",
     note: "",
@@ -155,6 +161,34 @@ export const AddressManager = () => {
     window.open(url, '_blank');
   };
 
+  const showQrCode = (address: SavedAddress) => {
+    setSelectedAddress(address);
+    setIsQrModalOpen(true);
+  };
+
+  const decipherAddress = () => {
+    if (!decipherCode.trim()) return;
+    
+    const found = addresses.find(addr => 
+      addr.code.toLowerCase().includes(decipherCode.toLowerCase())
+    );
+    
+    if (found) {
+      setDecipheredAddress(found);
+      toast({
+        title: "Address Found!",
+        description: `Found: ${found.label}`,
+      });
+    } else {
+      setDecipheredAddress(null);
+      toast({
+        title: "Address Not Found",
+        description: "No matching address found in your saved addresses.",
+        variant: "destructive",
+      });
+    }
+  };
+
   if (!user) {
     return (
       <Card>
@@ -170,10 +204,16 @@ export const AddressManager = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">My Addresses</h2>
-        <Button onClick={() => setIsAddModalOpen(true)} variant="hero">
-          <Plus className="w-4 h-4" />
-          Add Address
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setIsDecipherModalOpen(true)} variant="outline">
+            <Search className="w-4 h-4" />
+            Decipher
+          </Button>
+          <Button onClick={() => setIsAddModalOpen(true)} variant="hero">
+            <Plus className="w-4 h-4" />
+            Add Address
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4">
@@ -246,7 +286,11 @@ export const AddressManager = () => {
                     <Navigation className="w-4 h-4" />
                     Navigate
                   </Button>
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => showQrCode(address)}
+                  >
                     <QrCode className="w-4 h-4" />
                     QR
                   </Button>
@@ -324,6 +368,127 @@ export const AddressManager = () => {
                 {editingAddress ? "Update" : "Save"}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* QR Code Modal */}
+      <Dialog open={isQrModalOpen} onOpenChange={setIsQrModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>QR Code - {selectedAddress?.label}</DialogTitle>
+          </DialogHeader>
+          
+          {selectedAddress && (
+            <div className="space-y-4">
+              <div className="flex justify-center p-4 bg-white rounded-lg">
+                <QRCode
+                  value={`${selectedAddress.code} - ${selectedAddress.generalAddress}`}
+                  size={200}
+                />
+              </div>
+              
+              <div className="text-center space-y-2">
+                <p className="font-mono text-sm font-bold text-primary">
+                  {selectedAddress.code}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {selectedAddress.generalAddress}
+                </p>
+              </div>
+
+              <Button
+                onClick={() => copyToClipboard(selectedAddress.code)}
+                variant="outline"
+                className="w-full"
+              >
+                <Copy className="w-4 h-4 mr-2" />
+                Copy Address Code
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Decipher Address Modal */}
+      <Dialog open={isDecipherModalOpen} onOpenChange={setIsDecipherModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Decipher Address</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="decipher-code">Enter GeoAddress Code</Label>
+              <Input
+                id="decipher-code"
+                placeholder="e.g., GAN.A1B.CDE"
+                value={decipherCode}
+                onChange={(e) => setDecipherCode(e.target.value)}
+              />
+            </div>
+
+            <Button
+              onClick={decipherAddress}
+              variant="hero"
+              className="w-full"
+              disabled={!decipherCode.trim()}
+            >
+              <Search className="w-4 h-4 mr-2" />
+              Search Address
+            </Button>
+
+            {decipheredAddress && (
+              <Card className="border-primary/20">
+                <CardContent className="p-4">
+                  <div className="space-y-2">
+                    <h3 className="font-semibold">{decipheredAddress.label}</h3>
+                    <p className="font-mono text-sm font-bold text-primary">
+                      {decipheredAddress.code}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {decipheredAddress.generalAddress}
+                    </p>
+                    {decipheredAddress.note && (
+                      <p className="text-xs text-muted-foreground">
+                        📝 {decipheredAddress.note}
+                      </p>
+                    )}
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigateToAddress(decipheredAddress)}
+                    >
+                      <Navigation className="w-4 h-4" />
+                      Navigate
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => showQrCode(decipheredAddress)}
+                    >
+                      <QrCode className="w-4 h-4" />
+                      QR Code
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            <Button
+              onClick={() => {
+                setIsDecipherModalOpen(false);
+                setDecipherCode("");
+                setDecipheredAddress(null);
+              }}
+              variant="outline"
+              className="w-full"
+            >
+              Close
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
